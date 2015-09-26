@@ -64,7 +64,7 @@ __email__="martin.fiedler@gmx.net"
 """
 
 
-import sys,os,os.path,array,getopt,random,types,fnmatch,operator,string
+import sys,os,os.path,array,getopt,random,types,fnmatch,operator,string,eyed3
 
 KnownProps=('filename','size','ignore','type','shuffle','reuse','bookmark')
 Rules=[
@@ -258,6 +258,7 @@ def write_to_db(filename):
       "\0"*(525-2*len(filename))
 
   # write entry, modifying shuffleflag and bookmarkflag at least
+  log("=> %s"%(filename))
   iTunesSD.write(entry[:555]+chr(props['shuffle'])+chr(props['bookmark'])+entry[557])
   if props['shuffle']: domains[-1].append(total_count)
   total_count+=1
@@ -283,7 +284,10 @@ def key_repr(x):
 
 def cmp_key(a,b):
   if type(a)==types.TupleType and type(b)==types.TupleType:
-    return cmp(a[0],b[0]) or cmp(a[1],b[1]) or cmp_key(a[2],b[2])
+    if (a[3]==-1 or b[3]==-1):
+      return cmp(a[0],b[0]) or cmp(a[1],b[1]) or cmp_key(a[2],b[2])
+    else:
+      return cmp(a[4]*100+a[3],b[4]*100+b[3])
   else:
     return cmp(key_repr(a),key_repr(b))
 
@@ -342,7 +346,26 @@ def browse(path, interactive):
         files.extend(filter(lambda x: x and x[0],[file_entry(subpath,name,dir+"/") for name in os.listdir(subpath)]))
       except OSError:
         pass
-
+ 
+  newfiles=[] 
+  for file in files:
+    if file[0]==1:
+      audiofile=eyed3.load("%s/%s"%(path, file[2]))
+      if not audiofile.tag is None and not audiofile.tag.track_num is None:
+        track_num=audiofile.tag.track_num[0]
+      else:
+        track_num=-1
+      if not audiofile.tag is None and not audiofile.tag.disc_num is None:
+        disk_num=audiofile.tag.disc_num[0]
+      else:
+        disk_num=1
+    else:
+      track_num=-2
+      disk_num=0
+    newfile=(file[0], file[1], file[2], track_num, disk_num)
+    newfiles.append(newfile)
+ 
+  files=newfiles 
   files.sort(cmp_key)
   count=len([None for x in files if x[0]])
   if count: domains.append([])
@@ -350,6 +373,7 @@ def browse(path, interactive):
   real_count=0
   for item in files:
     fullname="%s/%s"%(path,item[2])
+    #log("=> %s: Disk #%d, Track #%d"%(fullname, item[4], item[3]))
     if item[0]:
       real_count+=write_to_db(fullname[1:])
     else:
